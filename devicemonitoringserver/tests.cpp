@@ -1,3 +1,10 @@
+
+/**
+ *   \file     test.cpp
+ *   \version  0.1
+ *   \date     2024.02.11
+ */
+
 #include "tests.h"
 #include "command_center.h"
 #include "devicemock.h"
