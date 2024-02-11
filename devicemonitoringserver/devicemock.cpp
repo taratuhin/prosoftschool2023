@@ -1,4 +1,7 @@
 #include "devicemock.h"
+#include "message_command.h"
+#include "message_error.h"
+#include "message_meterage.h"
 #include <handlers/abstractaction.h>
 #include <handlers/abstractmessagehandler.h>
 #include <server/abstractclientconnection.h>
@@ -73,11 +76,37 @@ void DeviceMock::sendMessage(const std::string& message) const
     m_clientConnection->sendMessage(message);
 }
 
-void DeviceMock::onMessageReceived(const std::string& /*message*/)
+void DeviceMock::onMessageReceived(const std::string& message)
 {
-    // TODO: Разобрать std::string, прочитать команду,
-    // записать ее в список полученных комманд
-    sendNextMeterage(); // Отправляем следующее измерение
+    if ( !m_serializer.deserialize( m_encoder.decode( message ), [this]( const  Message & message )
+    {
+        do
+        {
+            const  MessageCommand  * message_command = dynamic_cast<const  MessageCommand  *>( &message );
+
+            if ( message_command )
+            {
+                m_messages.push_back( std::shared_ptr<Message>( new MessageCommand( *message_command ) ) );
+
+                break;
+            }
+
+            const  MessageError  * message_error = dynamic_cast<const  MessageError  *>( &message );
+
+            if ( message_error )
+            {
+                m_messages.push_back(std::shared_ptr<Message>( new MessageError( *message_error ) ) );
+
+                break;
+            }
+
+            throw std::logic_error( "Wrong message type!" );
+        } while (false);
+    } ) )
+
+    throw  std::runtime_error( "Message deserialization error!" );
+
+    sendNextMeterage();  // Отправляем следующее измерение
 }
 
 void DeviceMock::onConnected()
@@ -93,6 +122,7 @@ void DeviceMock::onDisconnected()
 void DeviceMock::setMeterages(std::vector<uint8_t> meterages)
 {
     m_meterages = std::move(meterages);
+    m_time_stamp = 0;
 }
 
 void DeviceMock::startMeterageSending()
@@ -100,12 +130,32 @@ void DeviceMock::startMeterageSending()
     sendNextMeterage();
 }
 
+const  std::vector<std::shared_ptr<Message>>  & DeviceMock::messages() const
+{
+    return  m_messages;
+}
+
+MessageEncoder  & DeviceMock::messageEncoder()
+{
+    return m_encoder;
+}
+
 void DeviceMock::sendNextMeterage()
 {
-    if (m_timeStamp >= m_meterages.size())
+    if ( m_time_stamp >= m_meterages.size() )
+    {
         return;
-    const auto meterage = m_meterages.at(m_timeStamp);
-    (void)meterage;
-    ++m_timeStamp;
-    // TODO: Сформировать std::string и передать в sendMessage
+    }
+
+    const  auto  meterage = m_meterages.at( m_time_stamp );
+    auto  string = m_serializer.serialize( MessageMeterage( m_time_stamp, meterage ) );
+    if ( !string.empty() )
+    {
+        sendMessage( m_encoder.encode( string ) );
+        ++m_time_stamp;
+    }
+    else
+    {
+        throw std::runtime_error( "Message serialization error!" );
+    }
 }

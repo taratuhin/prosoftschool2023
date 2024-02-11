@@ -2,7 +2,12 @@
 #define DEVICE_H
 
 #include "common.h"
+#include "message.h"
+#include "message_encoder.h"
+#include "message_serializer.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -30,7 +35,7 @@ public:
     bool bind(uint64_t deviceId);
     /*!
      * \brief Подключить устройство к серверу.
-     * \param serverId - идентификатор сревера
+     * \param serverId - идентификатор сервера
      * \return false в случае ошибки
      */
     bool connectToServer(uint64_t serverId);
@@ -43,6 +48,14 @@ public:
      * \brief Начать отправку измерений.
      */
     void startMeterageSending();
+    /*!
+     * \brief Список полученных сообщений.
+     */
+    const std::vector<std::shared_ptr<Message>>& messages() const;
+    /*!
+     * \brief Ссылка на объект MessageEncoder для управления параметрами шифрования.
+     */
+    MessageEncoder  & messageEncoder();
 
 private:
     /*!
@@ -70,7 +83,10 @@ private:
 private:
     AbstractClientConnection* m_clientConnection = nullptr;
     std::vector<uint8_t> m_meterages;
-    uint64_t m_timeStamp = 0;
+    uint64_t m_time_stamp = 0;
+    std::vector<std::shared_ptr<Message>>  m_messages;
+    MessageSerializer  m_serializer;
+    MessageEncoder  m_encoder;
 };
 
 #endif // DEVICE_H

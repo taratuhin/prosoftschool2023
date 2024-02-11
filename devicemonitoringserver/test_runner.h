@@ -1,5 +1,5 @@
-#ifndef TEST_RUNNER
-#define TEST_RUNNER
+#ifndef TEST_RUNNER_H
+#define TEST_RUNNER_H
 
 #include <exception>
 #include <iostream>
@@ -91,6 +91,32 @@ void AssertEqual(const T& t, const U& u,
     }
 }
 
+template <class T, class U>
+void AssertNotEqual(const T& t, const U& u,
+                    const std::string& hint)
+{
+    if (t == u)
+    {
+        std::ostringstream os;
+        os << "Assertion failed: " << t << " == " << u
+           << " hint: " << hint;
+        throw std::runtime_error(os.str());
+    }
+}
+
+template <class T, class U, class Y>
+void AssertWithThreshold(T t, U u, Y threshold,
+                         const std::string& hint)
+{
+    if (!(t + threshold >= u && t - threshold <= u))
+    {
+        std::ostringstream os;
+        os << "Assertion failed: " << t << " != " << u << " +- " << threshold
+           << " hint: " << hint;
+        throw std::runtime_error(os.str());
+    }
+}
+
 inline void Assert(bool b, const std::string& hint)
 {
     AssertEqual(b, true, hint);
@@ -107,7 +133,7 @@ public:
             func();
             std::cerr << test_name << " OK" << std::endl;
         }
-        catch (std::runtime_error& e)
+        catch (std::exception& e)
         {
             ++fail_count;
             std::cerr << test_name << " fail: " << e.what() << std::endl;
@@ -121,6 +147,10 @@ public:
             std::cerr << fail_count << " unit tests failed. Terminate" << std::endl;
             exit(1);
         }
+        else
+        {
+            std::cout << "*** All tests OK ***" << std::endl;
+        }
     }
 
 private:
@@ -133,20 +163,34 @@ private:
 
 // После вставки все оказываются в одной строке -> Можно использовать UNIQUE
 #define ASSERT_EQUAL(x, y)                                                   \
-    {                                                                        \
+{                                                                        \
         std::ostringstream UNIQUE;                                           \
         UNIQUE << #x << " != " << #y << ", " << __FILE__ << ":" << __LINE__; \
         AssertEqual(x, y, UNIQUE.str());                                     \
-    }
+}
+
+#define ASSERT_NOT_EQUAL(x, y)                                               \
+{                                                                        \
+        std::ostringstream UNIQUE;                                           \
+        UNIQUE << #x << " == " << #y << ", " << __FILE__ << ":" << __LINE__; \
+        AssertNotEqual(x, y, UNIQUE.str());                                  \
+}
+
+#define ASSERT_WITH_THRESHOLD(x, y, threshold)                                                      \
+{                                                                                               \
+        std::ostringstream UNIQUE;                                                                  \
+        UNIQUE << #x << " != " << #y << " +- " << #threshold << ", " << __FILE__ << ":" << __LINE__; \
+        AssertWithThreshold(x, y, threshold, UNIQUE.str());                                         \
+}
 
 #define ASSERT(x)                                                     \
-    {                                                                 \
+{                                                                 \
         std::ostringstream UNIQUE;                                    \
         UNIQUE << #x << " is false, " << __FILE__ << ":" << __LINE__; \
         Assert(x, UNIQUE.str());                                      \
-    }
+}
 
 #define RUN_TEST(tr, func) \
-    tr.RunTest(func, #func)
+tr.RunTest(func, #func)
 
-#endif //TEST_RUNNER
+#endif //TEST_RUNNER_H
