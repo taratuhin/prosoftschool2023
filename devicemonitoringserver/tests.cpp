@@ -242,39 +242,42 @@ void  message_encoder_double_add_test()
     ASSERT_EQUAL( std::string( "456" ), encoder.decode( "test" ) );
 }
 
-void message_encoder_rot3_test()
+
+void  message_encoder_rot3_test()
 {
-    MessageEncoder encoder;
-    ASSERT(encoder.select_executor("ROT3"));
-    std::string message;
-    const int start = std::numeric_limits<unsigned char>::min(),
+    MessageEncoder  encoder;
+    ASSERT( encoder.select_executor( "ROT3" ) );
+    std::string  message;
+    const  int  start = std::numeric_limits<unsigned char>::min(),
         end = std::numeric_limits<unsigned char>::max() + 1;
-    const size_t len = end - start;
-    for (int i = start; i < end; ++i)
+    const  size_t  len = end - start;
+    for ( int i = start; i < end; ++i )
     {
         message += i;
     }
-    ASSERT_EQUAL(len, message.length());
+    ASSERT_EQUAL( len, message.length() );
 
-    auto encoded = encoder.encode(message);
-    ASSERT_EQUAL(len, encoded.length());
-    for (size_t i = 0; i < len; ++i)
+    auto  encoded = encoder.encode( message );
+    ASSERT_EQUAL( len, encoded.length() );
+    for ( size_t i = 0; i < len; ++i )
     {
-        int enc = message[i] + 3;
-        if (enc >= end)
+        int  enc = message[i] + 3;
+
+        if ( enc >= end )
         {
             enc -= end - start;
         }
-        ASSERT_EQUAL(static_cast<char>(enc), encoded[i]);
+        ASSERT_EQUAL( static_cast<char>( enc ), encoded[i] );
     }
 
-    auto decoded = encoder.decode(encoded);
-    ASSERT_EQUAL(len, decoded.length());
+    auto  decoded = encoder.decode( encoded );
+    ASSERT_EQUAL( len, decoded.length() );
 
-    ASSERT_EQUAL(message, decoded);
+    ASSERT_EQUAL( message, decoded );
 }
 
-void message_encoder_mirror_test()
+
+void  message_encoder_mirror_test()
 {
     MessageEncoder encoder;
     ASSERT(encoder.select_executor("Mirror"));
