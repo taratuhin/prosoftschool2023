@@ -5,24 +5,24 @@
  *   \date     2024.02.11
  */
 
-#include "tests.h"
-#include "command_center.h"
-#include "devicemock.h"
-#include "devicemonitoringserver.h"
-#include "deviceworkschedule.h"
-#include "dummy_encoder_executor.h"
-#include "message.h"
-#include "message_command.h"
-#include "message_encoder.h"
-#include "message_error.h"
-#include "message_meterage.h"
-#include "message_serializer.h"
-#include "test_runner.h"
-#include <servermock/clientconnectionmock.h>
-#include <servermock/connectionservermock.h>
-#include <servermock/taskqueue.h>
+#include  "tests.h"
+#include  "command_center.h"
+#include  "devicemock.h"
+#include  "devicemonitoringserver.h"
+#include  "deviceworkschedule.h"
+#include  "dummy_encoder_executor.h"
+#include  "message.h"
+#include  "message_command.h"
+#include  "message_encoder.h"
+#include  "message_error.h"
+#include  "message_meterage.h"
+#include  "message_serializer.h"
+#include  "test_runner.h"
+#include  <servermock/clientconnectionmock.h>
+#include  <servermock/connectionservermock.h>
+#include  <servermock/taskqueue.h>
 
-#include <limits>
+#include  <limits>
 
 #define  compareVectorsOfSharedPtrs(a, b)  \
 ASSERT_EQUAL(a.size(), b.size());     \
@@ -69,372 +69,215 @@ struct  MonitoringServerTest
 };
 
 
-void  monitoringServerTestNoSchedule()
+void message_serialization_test()
 {
-    MonitoringServerTest  test( 11u );
-    uint64_t  deviceId = 111u;
-    test.connectDevice( deviceId );
-    std::vector<uint8_t>  meterages = { 0u };
-    test.devices[deviceId]->setMeterages( meterages );
-    test.devices[deviceId]->startMeterageSending();
-    while ( test.task_queue.processTask() )
-        ;
+    MessageSerializer  serializer;
+    std::vector<std::shared_ptr<Message>>  messages;
 
-    std::vector<std::shared_ptr<Message>>  expected = {
-        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoSchedule)),
+    auto  callback = [&]( const  Message&  msg )
+    {
+        do
+        {
+            const  MessageCommand  * messageCommand = dynamic_cast<const  MessageCommand  *>( &msg );
+
+            if ( messageCommand )
+            {
+                messages.push_back( std::shared_ptr<Message>( new MessageCommand( *messageCommand ) ) );
+
+                break;
+            }
+
+            const  MessageError  * messageError = dynamic_cast<const  MessageError  *>( &msg );
+
+            if ( messageError )
+            {
+                messages.push_back( std::shared_ptr<Message>( new MessageError( *messageError ) ) );
+
+                break;
+            }
+
+            const  MessageMeterage  * messageMeterage = dynamic_cast<const  MessageMeterage *>( &msg );
+
+            if ( messageMeterage )
+            {
+                messages.push_back(std::shared_ptr<Message>(new MessageMeterage(*messageMeterage)));
+
+                break;
+            }
+        } while ( false );
     };
-    auto  & messages = test.devices[deviceId]->messages();
+
+    ASSERT_EQUAL( serializer.deserialize( "", callback ), false );
+    ASSERT_EQUAL( serializer.deserialize( "12345", callback ), false );
+    ASSERT_EQUAL( serializer.deserialize( "e", callback ), false );
+    ASSERT_EQUAL( serializer.deserialize( "eA", callback ), false );
+    ASSERT_EQUAL( serializer.deserialize( "m", callback ), false );
+    ASSERT_EQUAL( serializer.deserialize( "mA", callback ), false );
+    ASSERT_EQUAL( serializer.deserialize( "c", callback ), false );
+
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageCommand( 0 ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageCommand( 1 ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageCommand( -1 ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageCommand( 123 ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageCommand( std::numeric_limits<int8_t>::max() ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageCommand( std::numeric_limits<int8_t>::min() ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageMeterage( 12345u, 123u ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageMeterage( std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint8_t>::min() ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageMeterage( std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint8_t>::min() ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageMeterage( std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint8_t>::max() ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageMeterage( std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint8_t>::max() ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageError( MessageError::ErrorType::NoSchedule ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageError( MessageError::ErrorType::NoTimestamp ) ), callback ), true );
+    ASSERT_EQUAL( serializer.deserialize( serializer.serialize( MessageError( MessageError::ErrorType::Obsolete ) ), callback ), true );
+
+    std::vector<std::shared_ptr<Message>> expected = {
+        std::shared_ptr<Message>( new MessageCommand( 0 ) ),
+        std::shared_ptr<Message>( new MessageCommand( 1 ) ),
+        std::shared_ptr<Message>( new MessageCommand( -1 ) ),
+        std::shared_ptr<Message>( new MessageCommand( 123 ) ),
+        std::shared_ptr<Message>( new MessageCommand( std::numeric_limits<int8_t>::max() ) ),
+        std::shared_ptr<Message>( new MessageCommand( std::numeric_limits<int8_t>::min() ) ),
+        std::shared_ptr<Message>( new MessageMeterage( 12345u, 123u ) ),
+        std::shared_ptr<Message>( new MessageMeterage( std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint8_t>::min() ) ),
+        std::shared_ptr<Message>( new MessageMeterage( std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint8_t>::min() ) ),
+        std::shared_ptr<Message>( new MessageMeterage( std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint8_t>::max() ) ),
+        std::shared_ptr<Message>( new MessageMeterage( std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint8_t>::max() ) ),
+        std::shared_ptr<Message>( new MessageError( MessageError::ErrorType::NoSchedule ) ),
+        std::shared_ptr<Message>( new MessageError( MessageError::ErrorType::NoTimestamp ) ),
+        std::shared_ptr<Message>( new MessageError( MessageError::ErrorType::Obsolete ) ),
+    };
     compareVectorsOfSharedPtrs( expected, messages );
 }
 
 
-void  monitoringServerTestNoTimeStamp()
+void  message_encoder_empty_test()
 {
-    MonitoringServerTest  test(11u);
-    uint64_t  deviceId = 111u;
-    test.connectDevice(deviceId);
-    DeviceWorkSchedule  schedule { deviceId, { { 1u, 0u } } };
-    std::vector<uint8_t>  meterages = { 0u };
-    test.server.setDeviceWorkSchedule( schedule );
-    test.devices[deviceId]->setMeterages( meterages );
-    test.devices[deviceId]->startMeterageSending();
-    while ( test.task_queue.processTask() )
-        ;
-
-    std::vector<std::shared_ptr<Message>> expected = {
-        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoTimestamp)),
-    };
-    auto& messages = test.devices[deviceId]->messages();
-    compareVectorsOfSharedPtrs(expected, messages);
+    MessageEncoder  encoder;
+    ASSERT( encoder.encode( "123" ).empty() );
+    ASSERT( encoder.decode( "123" ).empty() );
 }
 
-void monitoringServerTestObsolete()
+
+void  message_encoder_dummy_test()
 {
-    MonitoringServerTest test(11u);
-    uint64_t deviceId = 111u;
-    test.connectDevice(deviceId);
-    std::vector<uint8_t> meterages = { 0u };
-    test.devices[deviceId]->setMeterages(meterages);
-    test.devices[deviceId]->startMeterageSending();
-    while (test.task_queue.processTask())
-        ;
-
-    test.devices[deviceId]->setMeterages(meterages);
-    test.devices[deviceId]->startMeterageSending();
-    while (test.task_queue.processTask())
-        ;
-
-    std::vector<std::shared_ptr<Message>> expected = {
-        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoSchedule)),
-        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::Obsolete)),
-    };
-    auto& messages = test.devices[deviceId]->messages();
-    compareVectorsOfSharedPtrs(expected, messages);
-}
-
-void monitoringServerTestCommand()
-{
-    MonitoringServerTest test(11u);
-    uint64_t deviceId = 111u;
-    test.connectDevice(deviceId);
-    DeviceWorkSchedule schedule { deviceId, {
-                                           { 0u, 0u },
-                                           { 1u, 0u },
-                                           { 2u, 100u },
-                                           } };
-    std::vector<uint8_t> meterages = { 0u, 100u, 0u };
-    test.server.setDeviceWorkSchedule(schedule);
-    test.devices[deviceId]->setMeterages(meterages);
-    test.devices[deviceId]->startMeterageSending();
-    while (test.task_queue.processTask())
-        ;
-
-    std::vector<std::shared_ptr<Message>> expected = {
-        std::shared_ptr<Message>(new MessageCommand(0)),
-        std::shared_ptr<Message>(new MessageCommand(-100)),
-        std::shared_ptr<Message>(new MessageCommand(100)),
-    };
-    auto& messages = test.devices[deviceId]->messages();
-    compareVectorsOfSharedPtrs(expected, messages);
-}
-
-void monitoringServerTestTwoDevices()
-{
-    MonitoringServerTest test(11u);
-    uint64_t deviceId1 = 111u, deviceId2 = 654u;
-    test.connectDevice(deviceId1);
-    test.connectDevice(deviceId2);
-    test.server.setDeviceWorkSchedule({ deviceId1, {
-                                                   { 0u, 0u },
-                                                   { 1u, 0u },
-                                                   { 2u, 3u },
-                                                   } });
-    test.server.setDeviceWorkSchedule({ deviceId2, {
-                                                   { 1u, 100u },
-                                                   { 2u, 50u },
-                                                   { 3u, 0u },
-                                                   } });
-    test.devices[deviceId1]->setMeterages({ 0u, 1u, 2u });
-    test.devices[deviceId2]->setMeterages({ 0u, 0u, 50u, 100u });
-    test.devices[deviceId1]->startMeterageSending();
-    test.devices[deviceId2]->startMeterageSending();
-    while (test.task_queue.processTask())
-        ;
-
-    std::vector<std::shared_ptr<Message>> expected1 = {
-        std::shared_ptr<Message>(new MessageCommand(0)),
-        std::shared_ptr<Message>(new MessageCommand(-1)),
-        std::shared_ptr<Message>(new MessageCommand(1)),
-    };
-    auto& messages1 = test.devices[deviceId1]->messages();
-    compareVectorsOfSharedPtrs(expected1, messages1);
-    std::vector<std::shared_ptr<Message>> expected2 = {
-        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoTimestamp)),
-        std::shared_ptr<Message>(new MessageCommand(100)),
-        std::shared_ptr<Message>(new MessageCommand(0)),
-        std::shared_ptr<Message>(new MessageCommand(-100)),
-    };
-    auto& messages2 = test.devices[deviceId2]->messages();
-    compareVectorsOfSharedPtrs(expected2, messages2);
-}
-
-void monitoringServerCryptoPositiveTest()
-{
-    MonitoringServerTest test(11u);
-    ASSERT(test.server.message_encoder().select_executor("ROT3"));
-    uint64_t deviceId = 111u;
-    test.connectDevice(deviceId);
-    ASSERT(test.devices[deviceId]->messageEncoder().select_executor("ROT3"));
-    DeviceWorkSchedule schedule { deviceId, {
-                                           { 0u, 0u },
-                                           { 1u, 0u },
-                                           { 2u, 3u },
-                                           } };
-    std::vector<uint8_t> meterages = { 0u, 1u, 2u };
-    test.server.setDeviceWorkSchedule(schedule);
-    test.devices[deviceId]->setMeterages(meterages);
-    test.devices[deviceId]->startMeterageSending();
-    while (test.task_queue.processTask())
-        ;
-
-    std::vector<std::shared_ptr<Message>> expected = {
-        std::shared_ptr<Message>(new MessageCommand(0)),
-        std::shared_ptr<Message>(new MessageCommand(-1)),
-        std::shared_ptr<Message>(new MessageCommand(1)),
-    };
-    auto& messages = test.devices[deviceId]->messages();
-    compareVectorsOfSharedPtrs(expected, messages);
-}
-
-void monitoringServerCryptoNegativeTest()
-{
-    MonitoringServerTest test(11u);
-    ASSERT(test.server.message_encoder().select_executor("ROT3"));
-    uint64_t deviceId = 111u;
-    test.connectDevice(deviceId);
-    ASSERT(test.devices[deviceId]->messageEncoder().select_executor("Mirror"));
-    DeviceWorkSchedule schedule { deviceId, {
-                                           { 0u, 0u },
-                                           { 1u, 0u },
-                                           { 2u, 3u },
-                                           } };
-    std::vector<uint8_t> meterages = { 0u, 1u, 2u };
-    test.server.setDeviceWorkSchedule(schedule);
-    test.devices[deviceId]->setMeterages(meterages);
-    test.devices[deviceId]->startMeterageSending();
-    while (test.task_queue.processTask())
-        ;
-
-    ASSERT(test.devices[deviceId]->messages().empty());
-}
-
-void messageSerializationTest()
-{
-    MessageSerializer serializer;
-    std::vector<std::shared_ptr<Message>> messages;
-
-    auto callback = [&](const Message& msg) {
-        do
-        {
-            const MessageCommand* messageCommand = dynamic_cast<const MessageCommand*>(&msg);
-            if (messageCommand)
-            {
-                messages.push_back(std::shared_ptr<Message>(new MessageCommand(*messageCommand)));
-                break;
-            }
-            const MessageError* messageError = dynamic_cast<const MessageError*>(&msg);
-            if (messageError)
-            {
-                messages.push_back(std::shared_ptr<Message>(new MessageError(*messageError)));
-                break;
-            }
-            const MessageMeterage* messageMeterage = dynamic_cast<const MessageMeterage*>(&msg);
-            if (messageMeterage)
-            {
-                messages.push_back(std::shared_ptr<Message>(new MessageMeterage(*messageMeterage)));
-                break;
-            }
-        } while (false);
-    };
-
-    ASSERT_EQUAL(serializer.deserialize("", callback), false);
-    ASSERT_EQUAL(serializer.deserialize("12345", callback), false);
-
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageCommand(0)), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageCommand(1)), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageCommand(-1)), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageCommand(123)), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageCommand(std::numeric_limits<int8_t>::max())), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageCommand(std::numeric_limits<int8_t>::min())), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageMeterage(12345u, 123u)), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageMeterage(std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint8_t>::min())), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageMeterage(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint8_t>::min())), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageMeterage(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint8_t>::max())), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageMeterage(std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint8_t>::max())), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageError(MessageError::ErrorType::NoSchedule)), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageError(MessageError::ErrorType::NoTimestamp)), callback), true);
-    ASSERT_EQUAL(serializer.deserialize(serializer.serialize(MessageError(MessageError::ErrorType::Obsolete)), callback), true);
-
-    std::vector<std::shared_ptr<Message>> expected = {
-        std::shared_ptr<Message>(new MessageCommand(0)),
-        std::shared_ptr<Message>(new MessageCommand(1)),
-        std::shared_ptr<Message>(new MessageCommand(-1)),
-        std::shared_ptr<Message>(new MessageCommand(123)),
-        std::shared_ptr<Message>(new MessageCommand(std::numeric_limits<int8_t>::max())),
-        std::shared_ptr<Message>(new MessageCommand(std::numeric_limits<int8_t>::min())),
-        std::shared_ptr<Message>(new MessageMeterage(12345u, 123u)),
-        std::shared_ptr<Message>(new MessageMeterage(std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint8_t>::min())),
-        std::shared_ptr<Message>(new MessageMeterage(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint8_t>::min())),
-        std::shared_ptr<Message>(new MessageMeterage(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint8_t>::max())),
-        std::shared_ptr<Message>(new MessageMeterage(std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint8_t>::max())),
-        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoSchedule)),
-        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoTimestamp)),
-        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::Obsolete)),
-    };
-    compareVectorsOfSharedPtrs(expected, messages);
-}
-
-void messageEncoderEmptyTest()
-{
-    MessageEncoder encoder;
-    ASSERT(encoder.encode("123").empty());
-    ASSERT(encoder.decode("123").empty());
-}
-
-void messageEncoderDummyTest()
-{
-    MessageEncoder encoder;
-    ASSERT(encoder.add_executor(new DummyEncoderExecutor()));
-    ASSERT(encoder.select_executor("Dummy"));
-    std::string message;
-    const int start = std::numeric_limits<unsigned char>::min(),
+    MessageEncoder  encoder;
+    ASSERT( encoder.add_executor( new DummyEncoderExecutor() ) );
+    ASSERT( encoder.select_executor( "Dummy" ) );
+    std::string  message;
+    const  int  start = std::numeric_limits<unsigned char>::min(),
         end = std::numeric_limits<unsigned char>::max() + 1;
-    const size_t len = end - start;
-    for (int i = start; i < end; ++i)
+    const  size_t  len = end - start;
+    for ( int i = start; i < end; ++i )
     {
         message += i;
     }
-    ASSERT_EQUAL(len, message.length());
+    ASSERT_EQUAL( len, message.length() );
 
-    auto encoded = encoder.encode(message);
-    ASSERT_EQUAL(len, encoded.length());
-    ASSERT_EQUAL(message, encoded);
+    auto  encoded = encoder.encode( message );
+    ASSERT_EQUAL( len, encoded.length() );
+    ASSERT_EQUAL( message, encoded );
 
-    auto decoded = encoder.decode(encoded);
-    ASSERT_EQUAL(len, decoded.length());
+    auto  decoded = encoder.decode( encoded );
+    ASSERT_EQUAL( len, decoded.length() );
 
-    ASSERT_EQUAL(message, decoded);
+    ASSERT_EQUAL( message, decoded );
 }
 
-void messageEncoderNegativeTest()
+
+void  message_encoder_negative_test()
 {
-    MessageEncoder encoder;
-    ASSERT_EQUAL(false, encoder.add_executor(nullptr));
-    ASSERT_EQUAL(false, encoder.select_executor("123"));
-    std::string message = "123";
-    ASSERT(encoder.encode(message).empty());
-    ASSERT(encoder.decode(message).empty());
+    MessageEncoder  encoder;
+    ASSERT_EQUAL( false, encoder.add_executor( nullptr ) );
+    ASSERT_EQUAL( false, encoder.select_executor( "123" ) );
+    std::string  message = "123";
+    ASSERT( encoder.encode( message ).empty() );
+    ASSERT( encoder.decode( message ).empty() );
 }
 
-void messageEncoderAddTest()
+
+void  message_encoder_add_test()
 {
-    class TestEncoderExecutor : public BaseEncoderExecutor
+    class  TestEncoderExecutor : public BaseEncoderExecutor
     {
     public:
-        TestEncoderExecutor(const std::string& message) :
-            test_message(message) {}
-        std::string encode(const std::string&) override { return test_message; }
-        std::string decode(const std::string&) override { return test_message; }
+        TestEncoderExecutor( const  std::string  & message ) :
+            test_message( message ) {}
+        std::string encode( const std::string& ) override { return test_message; }
+        std::string decode( const std::string& ) override { return test_message; }
         std::string name() const override { return "Test"; }
 
     private:
-        std::string test_message;
+        std::string  test_message;
     };
-    MessageEncoder encoder;
-    ASSERT(encoder.add_executor(new TestEncoderExecutor("123")));
-    ASSERT(encoder.select_executor("Test"));
-    ASSERT(encoder.add_executor(new DummyEncoderExecutor()));
-    ASSERT_EQUAL(std::string("123"), encoder.encode("test"));
-    ASSERT_EQUAL(std::string("123"), encoder.decode("test"));
+    MessageEncoder  encoder;
+    ASSERT( encoder.add_executor( new TestEncoderExecutor( "123" ) ) );
+    ASSERT( encoder.select_executor("Test"));
+    ASSERT( encoder.add_executor( new DummyEncoderExecutor() ) );
+    ASSERT_EQUAL( std::string( "123" ), encoder.encode( "test" ) );
+    ASSERT_EQUAL( std::string( "123" ), encoder.decode( "test" ) );
 }
 
-void messageEncoderDoubleAddTest()
+
+void  message_encoder_double_add_test()
 {
-    class TestEncoderExecutor : public BaseEncoderExecutor
+    class  TestEncoderExecutor : public BaseEncoderExecutor
     {
     public:
-        TestEncoderExecutor(const std::string& message) :
-            test_message(message) {}
-        std::string encode(const std::string&) override { return test_message; }
-        std::string decode(const std::string&) override { return test_message; }
+        TestEncoderExecutor( const  std::string  & message ) :
+            test_message( message ) {}
+        std::string encode( const std::string& ) override { return test_message; }
+        std::string decode( const std::string& ) override { return test_message; }
         std::string name() const override { return "Test"; }
 
     private:
-        std::string test_message;
+        std::string  test_message;
     };
-    MessageEncoder encoder;
-    ASSERT(encoder.add_executor(new TestEncoderExecutor("123")));
-    ASSERT(encoder.select_executor("Test"));
-    ASSERT_EQUAL(std::string("123"), encoder.encode("test"));
-    ASSERT_EQUAL(std::string("123"), encoder.decode("test"));
-    ASSERT(encoder.add_executor(new TestEncoderExecutor("456")));
-    ASSERT_EQUAL(std::string("456"), encoder.encode("test"));
-    ASSERT_EQUAL(std::string("456"), encoder.decode("test"));
+    MessageEncoder  encoder;
+    ASSERT( encoder.add_executor( new TestEncoderExecutor( "123" ) ) );
+    ASSERT( encoder.select_executor( "Test" ) );
+    ASSERT_EQUAL( std::string( "123" ), encoder.encode( "test" ) );
+    ASSERT_EQUAL( std::string( "123" ), encoder.decode( "test" ) );
+    ASSERT( encoder.add_executor( new TestEncoderExecutor( "456" ) ) );
+    ASSERT_EQUAL( std::string( "456" ), encoder.encode( "test" ) );
+    ASSERT_EQUAL( std::string( "456" ), encoder.decode( "test" ) );
 }
 
-void messageEncoderRot3Test()
+
+void  message_encoder_rot3_test()
 {
-    MessageEncoder encoder;
-    ASSERT(encoder.select_executor("ROT3"));
-    std::string message;
-    const int start = std::numeric_limits<unsigned char>::min(),
+    MessageEncoder  encoder;
+    ASSERT( encoder.select_executor( "ROT3" ) );
+    std::string  message;
+    const  int  start = std::numeric_limits<unsigned char>::min(),
         end = std::numeric_limits<unsigned char>::max() + 1;
-    const size_t len = end - start;
-    for (int i = start; i < end; ++i)
+    const  size_t  len = end - start;
+    for ( int i = start; i < end; ++i )
     {
         message += i;
     }
-    ASSERT_EQUAL(len, message.length());
+    ASSERT_EQUAL( len, message.length() );
 
-    auto encoded = encoder.encode(message);
-    ASSERT_EQUAL(len, encoded.length());
-    for (size_t i = 0; i < len; ++i)
+    auto  encoded = encoder.encode( message );
+    ASSERT_EQUAL( len, encoded.length() );
+    for ( size_t i = 0; i < len; ++i )
     {
-        int enc = message[i] + 3;
-        if (enc >= end)
+        int  enc = message[i] + 3;
+
+        if ( enc >= end )
         {
             enc -= end - start;
         }
-        ASSERT_EQUAL(static_cast<char>(enc), encoded[i]);
+        ASSERT_EQUAL( static_cast<char>( enc ), encoded[i] );
     }
 
-    auto decoded = encoder.decode(encoded);
-    ASSERT_EQUAL(len, decoded.length());
+    auto  decoded = encoder.decode( encoded );
+    ASSERT_EQUAL( len, decoded.length() );
 
-    ASSERT_EQUAL(message, decoded);
+    ASSERT_EQUAL( message, decoded );
 }
 
-void messageEncoderMirrorTest()
+
+void  message_encoder_mirror_test()
 {
     MessageEncoder encoder;
     ASSERT(encoder.select_executor("Mirror"));
@@ -495,7 +338,7 @@ void messageEncoderMirrorTest()
     ASSERT_EQUAL(message, decoded);
 }
 
-void messageEncoderMultiply41Test()
+void message_encoder_multiply41_test()
 {
     MessageEncoder encoder;
     ASSERT(encoder.select_executor("Multiply41"));
@@ -570,7 +413,7 @@ struct CommandCenterCallback
     std::vector<std::shared_ptr<Message>> messages;
 };
 
-void commandCenterNoScheduleTest()
+void command_center_no_schedule_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -583,7 +426,7 @@ void commandCenterNoScheduleTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterNoTimestampTest()
+void command_center_no_timestamp_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -597,7 +440,7 @@ void commandCenterNoTimestampTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterCommandZeroTest()
+void command_center_command_zero_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -611,7 +454,7 @@ void commandCenterCommandZeroTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterCommandUpTest()
+void command_center_command_up_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -625,7 +468,7 @@ void commandCenterCommandUpTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterCommandDownTest()
+void command_center_command_down_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -639,7 +482,7 @@ void commandCenterCommandDownTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterObsoleteTest()
+void command_center_obsolete_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -662,7 +505,7 @@ void commandCenterObsoleteTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterTwoDevicesTest()
+void command_center_two_devices_test()
 {
     CommandCenter center;
     MessageMeterage meterage = MessageMeterage(0u, 100u);
@@ -686,7 +529,7 @@ void commandCenterTwoDevicesTest()
     compareVectorsOfSharedPtrs(expected2, callback2.messages);
 }
 
-void commandCenterUnsortedScheduleTest()
+void command_center_unsorted_schedule_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -707,7 +550,7 @@ void commandCenterUnsortedScheduleTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterDublicateScheduleTest()
+void command_center_dublicate_schedule_test()
 {
     CommandCenter  center;
     uint64_t deviceId = 123u;
@@ -724,7 +567,7 @@ void commandCenterDublicateScheduleTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterNewScheduleTest()
+void command_center_new_schedule_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -757,7 +600,7 @@ void commandCenterNewScheduleTest()
     compareVectorsOfSharedPtrs(expected, callback.messages);
 }
 
-void commandCenterDeviationTest()
+void command_center_deviation_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -781,7 +624,7 @@ void commandCenterDeviationTest()
     }
 }
 
-void commandCenterDeviationNewScheduleTest()
+void command_center_deviation_new_schedule_test()
 {
     CommandCenter center;
     uint64_t deviceId = 123u;
@@ -814,4 +657,184 @@ void commandCenterDeviationNewScheduleTest()
         ASSERT_EQUAL(expected[i].phase.timeStamp, deviations[i].phase.timeStamp);
         ASSERT_EQUAL(expected[i].phase.value, deviations[i].phase.value);
     }
+}
+
+
+void  monitoring_server_test_no_schedule()
+{
+    MonitoringServerTest  test( 11u );
+    uint64_t  deviceId = 111u;
+    test.connectDevice( deviceId );
+    std::vector<uint8_t>  meterages = { 0u };
+    test.devices[deviceId]->setMeterages( meterages );
+    test.devices[deviceId]->startMeterageSending();
+    while ( test.task_queue.processTask() )
+        ;
+
+    std::vector<std::shared_ptr<Message>>  expected = {
+        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoSchedule)),
+    };
+    auto  & messages = test.devices[deviceId]->messages();
+    compareVectorsOfSharedPtrs( expected, messages );
+}
+
+
+void  monitoring_server_test_no_time_stamp()
+{
+    MonitoringServerTest  test( 11u );
+    uint64_t  deviceId = 111u;
+    test.connectDevice(deviceId);
+    DeviceWorkSchedule  schedule { deviceId, { { 1u, 0u } } };
+    std::vector<uint8_t>  meterages = { 0u };
+    test.server.setDeviceWorkSchedule( schedule );
+    test.devices[deviceId]->setMeterages( meterages );
+    test.devices[deviceId]->startMeterageSending();
+    while ( test.task_queue.processTask() )
+        ;
+
+    std::vector<std::shared_ptr<Message>> expected = {
+        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoTimestamp)),
+    };
+    auto& messages = test.devices[deviceId]->messages();
+    compareVectorsOfSharedPtrs( expected, messages );
+}
+
+void  monitoring_server_test_obsolete()
+{
+    MonitoringServerTest test( 11u );
+    uint64_t deviceId = 111u;
+    test.connectDevice(deviceId);
+    std::vector<uint8_t> meterages = { 0u };
+    test.devices[deviceId]->setMeterages(meterages);
+    test.devices[deviceId]->startMeterageSending();
+    while (test.task_queue.processTask())
+        ;
+
+    test.devices[deviceId]->setMeterages(meterages);
+    test.devices[deviceId]->startMeterageSending();
+    while (test.task_queue.processTask())
+        ;
+
+    std::vector<std::shared_ptr<Message>> expected = {
+        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoSchedule)),
+        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::Obsolete)),
+    };
+    auto& messages = test.devices[deviceId]->messages();
+    compareVectorsOfSharedPtrs(expected, messages);
+}
+
+void  monitoring_server_test_command()
+{
+    MonitoringServerTest test( 11u );
+    uint64_t deviceId = 111u;
+    test.connectDevice(deviceId);
+    DeviceWorkSchedule schedule { deviceId, {
+                                           { 0u, 0u },
+                                           { 1u, 0u },
+                                           { 2u, 100u },
+                                           } };
+    std::vector<uint8_t> meterages = { 0u, 100u, 0u };
+    test.server.setDeviceWorkSchedule(schedule);
+    test.devices[deviceId]->setMeterages(meterages);
+    test.devices[deviceId]->startMeterageSending();
+    while (test.task_queue.processTask())
+        ;
+
+    std::vector<std::shared_ptr<Message>> expected = {
+        std::shared_ptr<Message>(new MessageCommand(0)),
+        std::shared_ptr<Message>(new MessageCommand(-100)),
+        std::shared_ptr<Message>(new MessageCommand(100)),
+    };
+    auto& messages = test.devices[deviceId]->messages();
+    compareVectorsOfSharedPtrs(expected, messages);
+}
+
+void  monitoring_server_test_two_devices()
+{
+    MonitoringServerTest test( 11u );
+    uint64_t deviceId1 = 111u, deviceId2 = 654u;
+    test.connectDevice( deviceId1 );
+    test.connectDevice( deviceId2 );
+    test.server.setDeviceWorkSchedule({ deviceId1, {
+                                                   { 0u, 0u },
+                                                   { 1u, 0u },
+                                                   { 2u, 3u },
+                                                   } });
+    test.server.setDeviceWorkSchedule({ deviceId2, {
+                                                   { 1u, 100u },
+                                                   { 2u, 50u },
+                                                   { 3u, 0u },
+                                                   } });
+    test.devices[deviceId1]->setMeterages({ 0u, 1u, 2u });
+    test.devices[deviceId2]->setMeterages({ 0u, 0u, 50u, 100u });
+    test.devices[deviceId1]->startMeterageSending();
+    test.devices[deviceId2]->startMeterageSending();
+    while ( test.task_queue.processTask() )
+        ;
+
+    std::vector<std::shared_ptr<Message>> expected1 = {
+        std::shared_ptr<Message>(new MessageCommand(0)),
+        std::shared_ptr<Message>(new MessageCommand(-1)),
+        std::shared_ptr<Message>(new MessageCommand(1)),
+    };
+    auto& messages1 = test.devices[deviceId1]->messages();
+    compareVectorsOfSharedPtrs(expected1, messages1);
+    std::vector<std::shared_ptr<Message>> expected2 = {
+        std::shared_ptr<Message>(new MessageError(MessageError::ErrorType::NoTimestamp)),
+        std::shared_ptr<Message>(new MessageCommand(100)),
+        std::shared_ptr<Message>(new MessageCommand(0)),
+        std::shared_ptr<Message>(new MessageCommand(-100)),
+    };
+    auto& messages2 = test.devices[deviceId2]->messages();
+    compareVectorsOfSharedPtrs(expected2, messages2);
+}
+
+void  monitoring_server_crypto_positive_test()
+{
+    MonitoringServerTest test( 11u );
+    ASSERT( test.server.message_encoder().select_executor( "ROT3" ) );
+    uint64_t deviceId = 111u;
+    test.connectDevice( deviceId );
+    ASSERT( test.devices[deviceId]->messageEncoder().select_executor( "ROT3" ) );
+    DeviceWorkSchedule schedule { deviceId, {
+                                           { 0u, 0u },
+                                           { 1u, 0u },
+                                           { 2u, 3u },
+                                           } };
+    std::vector<uint8_t> meterages = { 0u, 1u, 2u };
+    test.server.setDeviceWorkSchedule( schedule );
+    test.devices[deviceId]->setMeterages( meterages );
+    test.devices[deviceId]->startMeterageSending();
+    while ( test.task_queue.processTask() )
+        ;
+
+    std::vector<std::shared_ptr<Message>> expected = {
+        std::shared_ptr<Message>( new MessageCommand( 0 ) ),
+        std::shared_ptr<Message>( new MessageCommand( -1 ) ),
+        std::shared_ptr<Message>( new MessageCommand( 1 ) ),
+    };
+    auto& messages = test.devices[deviceId]->messages();
+    compareVectorsOfSharedPtrs(expected, messages);
+}
+
+void  monitoring_server_crypto_negative_test()
+{
+    MonitoringServerTest test( 11u );
+    ASSERT( test.server.message_encoder().select_executor( "ROT3" ) );
+    uint64_t deviceId = 111u;
+    test.connectDevice( deviceId );
+    ASSERT( test.devices[deviceId]->messageEncoder().select_executor( "Mirror" ) );
+    DeviceWorkSchedule schedule { deviceId, {
+                                           { 0u, 0u },
+                                           { 1u, 0u },
+                                           { 2u, 3u },
+                                           } };
+    std::vector<uint8_t> meterages = { 0u, 1u, 2u };
+    test.server.setDeviceWorkSchedule( schedule );
+    test.devices[deviceId]->setMeterages( meterages );
+    test.devices[deviceId]->startMeterageSending();
+    while ( test.task_queue.processTask() )
+        ;
+
+    ASSERT( test.devices[deviceId]->messages().empty() );
 }
